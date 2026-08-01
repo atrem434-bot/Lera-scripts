@@ -1,0 +1,1387 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local CONFIG = {
+	name = "Лера",
+	hairId = 6413290259,
+	faceId = 494291269,
+	topId = 18237618361,
+	bottomId = 15148312219,
+	skinColor = Color3.fromRGB(255, 224, 189),
+	idleAnimationId = "rbxassetid://507766388",
+}
+
+local BREAST_TOP_BASE = Vector3.new(1.15, 0.85, 0.80)
+local BREAST_MAIN_BASE = Vector3.new(1.65, 1.40, 1.25)
+local BREAST_LOWER_BASE = Vector3.new(1.35, 0.85, 1.00)
+
+local BUTT_TOP_BASE = Vector3.new(1.20, 0.95, 1.00)
+local BUTT_MAIN_BASE = Vector3.new(1.50, 1.45, 1.35)
+local BUTT_LOWER_BASE = Vector3.new(1.30, 1.05, 1.15)
+
+local breastScale = 1
+local buttScale = 1
+
+local spawnedNpc = nil
+local isImproved = true
+local isPossessing = false
+local animatingClothing = false
+
+local improvedClothing = {}
+local bodyParts = {}
+
+local regularShirt = nil
+local regularPants = nil
+
+local possessWeld = nil
+local speedConnection = nil
+
+local function makePart(parent, name, size, cframe, color, shape)
+	local part = Instance.new("Part")
+
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Color = color
+	part.Material = Enum.Material.SmoothPlastic
+
+	part.Shape = shape or Enum.PartType.Block
+
+	part.Anchored = false
+	part.Massless = true
+
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+
+	part.Parent = parent
+
+	return part
+end
+
+local function makeWedge(parent, name, size, cframe, color)
+	local part = Instance.new("WedgePart")
+
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Color = color
+
+	part.Material = Enum.Material.SmoothPlastic
+
+	part.Anchored = false
+	part.Massless = true
+
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+
+	part.Parent = parent
+
+	return part
+end
+
+local function weld(part, target)
+	local constraint = Instance.new("WeldConstraint")
+
+	constraint.Part0 = target
+	constraint.Part1 = part
+
+	constraint.Parent = part
+
+	return constraint
+end
+
+local function addBodyPart(part)
+	table.insert(bodyParts, part)
+end
+
+local function clearImprovedClothes()
+	for _, entry in ipairs(improvedClothing) do
+		if entry.part and entry.part.Parent then
+			entry.part:Destroy()
+		end
+	end
+
+	improvedClothing = {}
+end
+
+local function addImprovedPart(part, target)
+	local w = weld(part, target)
+
+	table.insert(improvedClothing, {
+		part = part,
+		weld = w
+	})
+
+	return part
+end
+
+local function createBodyShape(npc)
+	local upperTorso = npc:FindFirstChild("UpperTorso")
+	local lowerTorso = npc:FindFirstChild("LowerTorso")
+
+	if not upperTorso or not lowerTorso then
+		return
+	end
+
+	local skin = CONFIG.skinColor
+
+	for side = -1, 1, 2 do
+		local sideName = side == -1 and "L" or "R"
+
+		local x = side * 0.68
+
+		local top = makePart(
+			npc,
+			"BreastTop_" .. sideName,
+			BREAST_TOP_BASE * breastScale,
+			upperTorso.CFrame * CFrame.new(
+				x,
+				0.23,
+				-0.58
+			),
+			skin,
+			Enum.PartType.Ball
+		)
+
+		weld(top, upperTorso)
+		addBodyPart(top)
+
+		local main = makePart(
+			npc,
+			"BreastMain_" .. sideName,
+			BREAST_MAIN_BASE * breastScale,
+			upperTorso.CFrame * CFrame.new(
+				x,
+				0.03,
+				-0.65
+			),
+			skin,
+			Enum.PartType.Ball
+		)
+
+		weld(main, upperTorso)
+		addBodyPart(main)
+
+		local lower = makePart(
+			npc,
+			"BreastLower_" .. sideName,
+			BREAST_LOWER_BASE * breastScale,
+			upperTorso.CFrame * CFrame.new(
+				x,
+				-0.30,
+				-0.53
+			),
+			skin,
+			Enum.PartType.Ball
+		)
+
+		weld(lower, upperTorso)
+		addBodyPart(lower)
+
+		local nipple = makePart(
+			npc,
+			"Nipple_" .. sideName,
+			Vector3.new(
+				0.23 * breastScale,
+				0.23 * breastScale,
+				0.17 * breastScale
+			),
+			upperTorso.CFrame * CFrame.new(
+				x,
+				-0.04,
+				-1.25
+			),
+			Color3.fromRGB(
+				205,
+				135,
+				145
+			),
+			Enum.PartType.Ball
+		)
+
+		weld(nipple, upperTorso)
+		addBodyPart(nipple)
+	end
+
+	for side = -1, 1, 2 do
+		local sideName = side == -1 and "L" or "R"
+
+		local x = side * 0.68
+
+		local top = makePart(
+			npc,
+			"ButtTop_" .. sideName,
+			BUTT_TOP_BASE * buttScale,
+			lowerTorso.CFrame * CFrame.new(
+				x,
+				0.13,
+				0.53
+			),
+			skin,
+			Enum.PartType.Ball
+		)
+
+		weld(top, lowerTorso)
+		addBodyPart(top)
+
+		local main = makePart(
+			npc,
+			"ButtMain_" .. sideName,
+			BUTT_MAIN_BASE * buttScale,
+			lowerTorso.CFrame * CFrame.new(
+				x,
+				-0.13,
+				0.62
+			),
+			skin,
+			Enum.PartType.Ball
+		)
+
+		weld(main, lowerTorso)
+		addBodyPart(main)
+
+		local lower = makePart(
+			npc,
+			"ButtLower_" .. sideName,
+			BUTT_LOWER_BASE * buttScale,
+			lowerTorso.CFrame * CFrame.new(
+				x,
+				-0.42,
+				0.48
+			),
+			skin,
+			Enum.PartType.Ball
+		)
+
+		weld(lower, lowerTorso)
+		addBodyPart(lower)
+	end
+end
+
+local function createImprovedClothes()
+	if not spawnedNpc then
+		return
+	end
+
+	clearImprovedClothes()
+
+	local upperTorso =
+		spawnedNpc:FindFirstChild(
+			"UpperTorso"
+		)
+
+	local lowerTorso =
+		spawnedNpc:FindFirstChild(
+			"LowerTorso"
+		)
+
+	if not upperTorso or not lowerTorso then
+		return
+	end
+
+	local cloth =
+		Color3.fromRGB(
+			15,
+			15,
+			22
+		)
+
+	for side = -1, 1, 2 do
+		local name =
+			side == -1
+			and "L"
+			or "R"
+
+		local cup = makePart(
+			spawnedNpc,
+			"BraCup_" .. name,
+			Vector3.new(
+				2.15 * breastScale,
+				1.65 * breastScale,
+				1.20 * breastScale
+			),
+			upperTorso.CFrame
+				* CFrame.new(
+					side * 0.68,
+					0.04,
+					-0.73
+				),
+			cloth,
+			Enum.PartType.Ball
+		)
+
+		addImprovedPart(
+			cup,
+			upperTorso
+		)
+
+		local shoulder = makePart(
+			spawnedNpc,
+			"BraShoulder_" .. name,
+			Vector3.new(
+				0.14,
+				1.25,
+				0.15
+			),
+			upperTorso.CFrame
+				* CFrame.new(
+					side * 0.70,
+					0.62,
+					-0.18
+				)
+				* CFrame.Angles(
+					math.rad(-15),
+					0,
+					math.rad(
+						side * 8
+					)
+				),
+			cloth
+		)
+
+		addImprovedPart(
+			shoulder,
+			upperTorso
+		)
+
+		local sideBand = makePart(
+			spawnedNpc,
+			"BraSide_" .. name,
+			Vector3.new(
+				0.14,
+				0.28,
+				1.10
+			),
+			upperTorso.CFrame
+				* CFrame.new(
+					side * 1.00,
+					0.02,
+					0.02
+				),
+			cloth
+		)
+
+		addImprovedPart(
+			sideBand,
+			upperTorso
+		)
+	end
+
+	local underBand = makePart(
+		spawnedNpc,
+		"BraUnderBand",
+		Vector3.new(
+			2.25,
+			0.15,
+			0.17
+		),
+		upperTorso.CFrame
+			* CFrame.new(
+				0,
+				-0.48,
+				-0.58
+			),
+		cloth
+	)
+
+	addImprovedPart(
+		underBand,
+		upperTorso
+	)
+
+	local backBand = makePart(
+		spawnedNpc,
+		"BraBackBand",
+		Vector3.new(
+			2.15,
+			0.17,
+			0.16
+		),
+		upperTorso.CFrame
+			* CFrame.new(
+				0,
+				0.02,
+				0.55
+			),
+		cloth
+	)
+
+	addImprovedPart(
+		backBand,
+		upperTorso
+	)
+
+	local frontTriangle = makeWedge(
+		spawnedNpc,
+		"PantyFrontTriangle",
+		Vector3.new(
+			1.30 * buttScale,
+			0.75 * buttScale,
+			0.16
+		),
+		lowerTorso.CFrame
+			* CFrame.new(
+				0,
+				-0.16,
+				-0.63
+			)
+			* CFrame.Angles(
+				0,
+				0,
+				math.rad(90)
+			),
+		cloth
+	)
+
+	addImprovedPart(
+		frontTriangle,
+		lowerTorso
+	)
+
+	local backPart = makePart(
+		spawnedNpc,
+		"PantyBack",
+		Vector3.new(
+			1.35 * buttScale,
+			0.78 * buttScale,
+			0.16
+		),
+		lowerTorso.CFrame
+			* CFrame.new(
+				0,
+				-0.20,
+				0.72
+			),
+		cloth
+	)
+
+	addImprovedPart(
+		backPart,
+		lowerTorso
+	)
+
+	local waistFront = makePart(
+		spawnedNpc,
+		"PantyWaistFront",
+		Vector3.new(
+			1.65 * buttScale,
+			0.13,
+			0.16
+		),
+		lowerTorso.CFrame
+			* CFrame.new(
+				0,
+				0.30,
+				-0.60
+			),
+		cloth
+	)
+
+	addImprovedPart(
+		waistFront,
+		lowerTorso
+	)
+
+	local waistBack = makePart(
+		spawnedNpc,
+		"PantyWaistBack",
+		Vector3.new(
+			1.65 * buttScale,
+			0.13,
+			0.16
+		),
+		lowerTorso.CFrame
+			* CFrame.new(
+				0,
+				0.30,
+				0.66
+			),
+		cloth
+	)
+
+	addImprovedPart(
+		waistBack,
+		lowerTorso
+	)
+
+	for side = -1, 1, 2 do
+		local name =
+			side == -1
+			and "L"
+			or "R"
+
+		local sidePart = makePart(
+			spawnedNpc,
+			"PantySide_" .. name,
+			Vector3.new(
+				0.13,
+				0.18,
+				1.18 * buttScale
+			),
+			lowerTorso.CFrame
+				* CFrame.new(
+					side * 0.82,
+					0.05,
+					0.03
+				),
+			cloth
+		)
+
+		addImprovedPart(
+			sidePart,
+			lowerTorso
+		)
+	end
+end
+
+local function createRegularClothes()
+	if not spawnedNpc then
+		return
+	end
+
+	if regularShirt then
+		regularShirt:Destroy()
+	end
+
+	if regularPants then
+		regularPants:Destroy()
+	end
+
+	local shirt =
+		Instance.new("Shirt")
+
+	shirt.Name =
+		"LeraRegularShirt"
+
+	shirt.ShirtTemplate =
+		"rbxassetid://"
+		.. tostring(
+			CONFIG.topId
+		)
+
+	shirt.Parent =
+		spawnedNpc
+
+	regularShirt =
+		shirt
+
+	local pants =
+		Instance.new("Pants")
+
+	pants.Name =
+		"LeraRegularPants"
+
+	pants.PantsTemplate =
+		"rbxassetid://"
+		.. tostring(
+			CONFIG.bottomId
+		)
+
+	pants.Parent =
+		spawnedNpc
+
+	regularPants =
+		pants
+end
+
+local function toggleLeraMode()
+	if not spawnedNpc
+		or animatingClothing
+	then
+		return
+	end
+
+	isImproved =
+		not isImproved
+
+	if isImproved then
+		if regularShirt then
+			regularShirt:Destroy()
+			regularShirt = nil
+		end
+
+		if regularPants then
+			regularPants:Destroy()
+			regularPants = nil
+		end
+
+		createImprovedClothes()
+
+	else
+		animatingClothing =
+			true
+
+		for _, entry in ipairs(
+			improvedClothing
+		) do
+			local part =
+				entry.part
+
+			if part
+				and part.Parent
+			then
+				if entry.weld then
+					entry.weld:Destroy()
+				end
+
+				part.Anchored =
+					true
+
+				local tween =
+					TweenService:Create(
+						part,
+						TweenInfo.new(
+							0.55,
+							Enum.EasingStyle.Quad,
+							Enum.EasingDirection.In
+						),
+						{
+							Position =
+								part.Position
+								+ Vector3.new(
+									0,
+									-4,
+									0
+								),
+
+							Transparency =
+								1
+						}
+					)
+
+				tween:Play()
+
+				tween.Completed:Connect(
+					function()
+						if part
+							and part.Parent
+						then
+							part:Destroy()
+						end
+					end
+				)
+			end
+		end
+
+		task.wait(
+			0.6
+		)
+
+		improvedClothing =
+			{}
+
+		createRegularClothes()
+
+		animatingClothing =
+			false
+	end
+end
+
+local function updateScales()
+	if not spawnedNpc then
+		return
+	end
+
+	for _, part in ipairs(
+		bodyParts
+	) do
+		if part
+			and part.Parent
+		then
+			local name =
+				part.Name
+
+			if string.find(
+				name,
+				"BreastTop"
+			) then
+
+				part.Size =
+					BREAST_TOP_BASE
+					* breastScale
+
+			elseif string.find(
+				name,
+				"BreastMain"
+			) then
+
+				part.Size =
+					BREAST_MAIN_BASE
+					* breastScale
+
+			elseif string.find(
+				name,
+				"BreastLower"
+			) then
+
+				part.Size =
+					BREAST_LOWER_BASE
+					* breastScale
+
+			elseif string.find(
+				name,
+				"Nipple"
+			) then
+
+				part.Size =
+					Vector3.new(
+						0.23,
+						0.23,
+						0.17
+					)
+					* breastScale
+
+			elseif string.find(
+				name,
+				"ButtTop"
+			) then
+
+				part.Size =
+					BUTT_TOP_BASE
+					* buttScale
+
+			elseif string.find(
+				name,
+				"ButtMain"
+			) then
+
+				part.Size =
+					BUTT_MAIN_BASE
+					* buttScale
+
+			elseif string.find(
+				name,
+				"ButtLower"
+			) then
+
+				part.Size =
+					BUTT_LOWER_BASE
+					* buttScale
+			end
+		end
+	end
+
+	if isImproved then
+		createImprovedClothes()
+	end
+end
+
+local function setPlayerVisible(
+	visible
+)
+	local character =
+		LocalPlayer.Character
+
+	if not character then
+		return
+	end
+
+	for _, object in ipairs(
+		character:GetDescendants()
+	) do
+		if object:IsA(
+			"BasePart"
+		) then
+
+			object.LocalTransparencyModifier =
+				visible
+				and 0
+				or 1
+
+		elseif object:IsA(
+			"Decal"
+		) then
+
+			object.Transparency =
+				visible
+				and 0
+				or 1
+		end
+	end
+end
+
+local function togglePossess()
+	if not spawnedNpc then
+		return
+	end
+
+	local character =
+		LocalPlayer.Character
+
+	if not character then
+		return
+	end
+
+	local playerRoot =
+		character:FindFirstChild(
+			"HumanoidRootPart"
+		)
+
+	local npcRoot =
+		spawnedNpc:FindFirstChild(
+			"HumanoidRootPart"
+		)
+
+	local playerHumanoid =
+		character:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if not playerRoot
+		or not npcRoot
+		or not playerHumanoid
+	then
+		return
+	end
+
+	isPossessing =
+		not isPossessing
+
+	if isPossessing then
+		setPlayerVisible(
+			false
+		)
+
+		npcRoot.CFrame =
+			playerRoot.CFrame
+
+		possessWeld =
+			Instance.new(
+				"WeldConstraint"
+			)
+
+		possessWeld.Part0 =
+			playerRoot
+
+		possessWeld.Part1 =
+			npcRoot
+
+		possessWeld.Parent =
+			npcRoot
+
+		local npcHumanoid =
+			spawnedNpc:
+			FindFirstChildOfClass(
+				"Humanoid"
+			)
+
+		if npcHumanoid then
+			npcHumanoid:
+				ChangeState(
+					Enum.HumanoidStateType.
+					Physics
+				)
+		end
+
+		workspace.CurrentCamera.
+			CameraSubject =
+			playerHumanoid
+
+	else
+		setPlayerVisible(
+			true
+		)
+
+		if possessWeld then
+			possessWeld:Destroy()
+			possessWeld = nil
+		end
+
+		workspace.CurrentCamera.
+			CameraSubject =
+			playerHumanoid
+	end
+end
+
+local function createNpc(
+	position
+)
+	if spawnedNpc then
+		spawnedNpc:Destroy()
+	end
+
+	bodyParts = {}
+	improvedClothing = {}
+
+	local description =
+		Instance.new(
+			"HumanoidDescription"
+		)
+
+	description.BodyTypeScale =
+		0.65
+
+	description.HeightScale =
+		0.98
+
+	description.WidthScale =
+		0.84
+
+	description.ProportionScale =
+		0.45
+
+	description.HeadScale =
+		0.95
+
+	description.Face =
+		CONFIG.faceId
+
+	description.HairAccessory =
+		tostring(
+			CONFIG.hairId
+		)
+
+	local npc =
+		Players:
+		CreateHumanoidModelFromDescription(
+			description,
+			Enum.HumanoidRigType.R15
+		)
+
+	npc.Name =
+		CONFIG.name
+
+	npc.Parent =
+		workspace
+
+	spawnedNpc =
+		npc
+
+	for _, child in ipairs(
+		npc:GetChildren()
+	) do
+		if child:IsA(
+			"Shirt"
+		)
+		or child:IsA(
+			"Pants"
+		)
+		then
+			child:Destroy()
+		end
+	end
+
+	for _, object in ipairs(
+		npc:GetDescendants()
+	) do
+		if object:IsA(
+			"BasePart"
+		)
+		and object.Name
+			~= "HumanoidRootPart"
+		then
+
+			object.Color =
+				CONFIG.skinColor
+		end
+	end
+
+	createBodyShape(
+		npc
+	)
+
+	createImprovedClothes()
+
+	isImproved =
+		true
+
+	local humanoid =
+		npc:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if humanoid then
+		humanoid.DisplayName =
+			CONFIG.name
+
+		humanoid.WalkSpeed =
+			0
+
+		humanoid.JumpPower =
+			0
+	end
+
+	npc:PivotTo(
+		CFrame.new(
+			position
+		)
+	)
+
+	return npc
+end
+
+local function createGUI()
+	local playerGui =
+		LocalPlayer:
+		WaitForChild(
+			"PlayerGui"
+		)
+
+	local old =
+		playerGui:
+		FindFirstChild(
+			"LeraNPCMenu"
+		)
+
+	if old then
+		old:Destroy()
+	end
+
+	local gui =
+		Instance.new(
+			"ScreenGui"
+		)
+
+	gui.Name =
+		"LeraNPCMenu"
+
+	gui.ResetOnSpawn =
+		false
+
+	gui.IgnoreGuiInset =
+		false
+
+	gui.Parent =
+		playerGui
+
+	local main =
+		Instance.new(
+			"Frame"
+		)
+
+	main.Size =
+		UDim2.fromOffset(
+			290,
+			360
+		)
+
+	main.Position =
+		UDim2.fromOffset(
+			15,
+			50
+		)
+
+	main.BackgroundColor3 =
+		Color3.fromRGB(
+			25,
+			25,
+			35
+		)
+
+	main.BorderSizePixel =
+		0
+
+	main.Active =
+		true
+
+	main.Draggable =
+		true
+
+	main.Parent =
+		gui
+
+	local corner =
+		Instance.new(
+			"UICorner"
+		)
+
+	corner.CornerRadius =
+		UDim.new(
+			0,
+			12
+		)
+
+	corner.Parent =
+		main
+
+	local title =
+		Instance.new(
+			"TextLabel"
+		)
+
+	title.Size =
+		UDim2.new(
+			1,
+			0,
+			0,
+			42
+		)
+
+	title.BackgroundTransparency =
+		1
+
+	title.Text =
+		"ЛЕРА — NPC"
+
+	title.TextColor3 =
+		Color3.new(
+			1,
+			1,
+			1
+		)
+
+	title.Font =
+		Enum.Font.GothamBold
+
+	title.TextSize =
+		18
+
+	title.Parent =
+		main
+
+	local function button(
+		text,
+		y,
+		color
+	)
+		local b =
+			Instance.new(
+				"TextButton"
+			)
+
+		b.Size =
+			UDim2.fromOffset(
+				250,
+				42
+			)
+
+		b.Position =
+			UDim2.fromOffset(
+				20,
+				y
+			)
+
+		b.BackgroundColor3 =
+			color
+
+		b.BorderSizePixel =
+			0
+
+		b.Text =
+			text
+
+		b.TextColor3 =
+			Color3.new(
+				1,
+				1,
+				1
+			)
+
+		b.Font =
+			Enum.Font.GothamBold
+
+		b.TextSize =
+			14
+
+		b.Parent =
+			main
+
+		local c =
+			Instance.new(
+				"UICorner"
+			)
+
+		c.CornerRadius =
+			UDim.new(
+				0,
+				8
+			)
+
+		c.Parent =
+			b
+
+		return b
+	end
+
+	local spawnButton =
+		button(
+			"Создать Леру",
+			50,
+			Color3.fromRGB(
+				70,
+				100,
+				170
+			)
+		)
+
+	local modeButton =
+		button(
+			"раздеть леру",
+			102,
+			Color3.fromRGB(
+				175,
+				75,
+				120
+			)
+		)
+
+	local possessButton =
+		button(
+			"🎮 Играть за Леру",
+			154,
+			Color3.fromRGB(
+				150,
+				70,
+				70
+			)
+		)
+
+	local breastMinus =
+		button(
+			"Грудь −",
+			206,
+			Color3.fromRGB(
+				70,
+				70,
+				85
+			)
+		)
+
+	local breastPlus =
+		button(
+			"Грудь +",
+			254,
+			Color3.fromRGB(
+				70,
+				70,
+				85
+			)
+		)
+
+	local buttPlus =
+		button(
+			"Попа +",
+			302,
+			Color3.fromRGB(
+				70,
+				70,
+				85
+			)
+		)
+
+	spawnButton.
+		MouseButton1Click:
+		Connect(
+			function()
+				local character =
+					LocalPlayer.Character
+
+				if not character then
+					return
+				end
+
+				local root =
+					character:
+					FindFirstChild(
+						"HumanoidRootPart"
+					)
+
+				if not root then
+					return
+				end
+
+				createNpc(
+					(
+						root.CFrame
+						* CFrame.new(
+							0,
+							0,
+							-6
+						)
+					).Position
+				)
+			end
+		)
+
+	modeButton.
+		MouseButton1Click:
+		Connect(
+			function()
+				toggleLeraMode()
+
+				if isImproved then
+					modeButton.Text =
+						"раздеть леру"
+				else
+					modeButton.Text =
+						"одеть леру"
+				end
+			end
+		)
+
+	possessButton.
+		MouseButton1Click:
+		Connect(
+			function()
+				togglePossess()
+
+				if isPossessing then
+					possessButton.Text =
+						"🎮 Выйти из Леры"
+				else
+					possessButton.Text =
+						"🎮 Играть за Леру"
+				end
+			end
+		)
+
+	breastMinus.
+		MouseButton1Click:
+		Connect(
+			function()
+				breastScale =
+					math.max(
+						0.5,
+						breastScale
+						- 0.1
+					)
+
+				updateScales()
+			end
+		)
+
+	breastPlus.
+		MouseButton1Click:
+		Connect(
+			function()
+				breastScale =
+					math.min(
+						2,
+						breastScale
+						+ 0.1
+					)
+
+				updateScales()
+			end
+		)
+
+	buttPlus.
+		MouseButton1Click:
+		Connect(
+			function()
+				buttScale =
+					math.min(
+						2,
+						buttScale
+						+ 0.1
+					)
+
+				updateScales()
+			end
+		)
+end
+
+createGUI()
+
+print(
+	"[ЛЕРА NPC] Загружено"
+)
