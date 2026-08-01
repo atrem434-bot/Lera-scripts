@@ -1,0 +1,445 @@
+--[[
+NPC SPAWN — ОДИН ПЕРСОНАЖ (Лера)
+С взаимодействием: при нажатии E рядом с NPC она садится на колени и обнимает игрока.
+]]
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
+-- НАСТРОЙКИ ФОРМ
+--==================================================
+
+local BREAST_SIZE = Vector3.new(1.8, 1.6, 1.4)
+local BREAST_LOWER_SIZE = Vector3.new(1.4, 1.0, 1.1)
+local BREAST_OFFSET_X = 0.7
+local BREAST_OFFSET_Y = 0.05
+local BREAST_OFFSET_Z = -0.55
+local BREAST_LOWER_OFFSET_Y = -0.35
+local BREAST_LOWER_OFFSET_Z = 0.15
+
+local NIPPLE_SIZE = Vector3.new(0.25, 0.2, 0.2)
+local NIPPLE_OFFSET_X = 0.7
+local NIPPLE_OFFSET_Y = -0.15
+local NIPPLE_OFFSET_Z = -0.75
+local NIPPLE_COLOR = Color3.fromRGB(200, 130, 140)
+
+local BUTT_SIZE = Vector3.new(1.6, 1.7, 1.5)
+local BUTT_LOWER_SIZE = Vector3.new(1.4, 1.3, 1.2)
+local BUTT_OFFSET_X = 0.7
+local BUTT_OFFSET_Y = -0.15
+local BUTT_OFFSET_Z = 0.55
+local BUTT_LOWER_OFFSET_Y = -0.35
+local BUTT_LOWER_OFFSET_Z = -0.10
+
+--==================================================
+-- ПЕРСОНАЖ (замените ID на свои)
+--==================================================
+
+local CONFIG = {
+	name = "Лера",
+	hairId = 6413290259,
+	faceId = 494291269,
+	topId = 18237618361,
+	bottomId = 15148312219,
+	skinColor = Color3.fromRGB(255, 224, 189),
+	idleAnimationId = "rbxassetid://507766388",
+}
+
+local spawnedNpc = nil
+local isHugging = false
+local npcWelds = {} -- для хранения weld'ов при обнимании
+
+--==================================================
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+--==================================================
+
+local function createBodyPart(parent, name, size, cframe, color)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Color = color
+	part.Material = Enum.Material.SmoothPlastic
+	part.Shape = Enum.PartType.Ball
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.Massless = true
+	part.Anchored = false
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = parent
+	return part
+end
+
+local function weldPart(part, bodyPart)
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = bodyPart
+	weld.Part1 = part
+	weld.Parent = part
+end
+
+--==================================================
+-- ДОБАВЛЕНИЕ ФОРМЫ
+--==================================================
+
+local function addCharacterShape(npc, skinColor)
+	local upperTorso = npc:FindFirstChild("UpperTorso")
+	local lowerTorso = npc:FindFirstChild("LowerTorso")
+	if not upperTorso or not lowerTorso then return end
+
+	local function addBreast(side)
+		local xOff = side * BREAST_OFFSET_X
+		local main = createBodyPart(npc, "BreastMain_" .. (side == -1 and "L" or "R"), BREAST_SIZE,
+			upperTorso.CFrame * CFrame.new(xOff, BREAST_OFFSET_Y, BREAST_OFFSET_Z), skinColor)
+		weldPart(main, upperTorso)
+		local lower = createBodyPart(npc, "BreastLower_" .. (side == -1 and "L" or "R"), BREAST_LOWER_SIZE,
+			upperTorso.CFrame * CFrame.new(xOff, BREAST_OFFSET_Y + BREAST_LOWER_OFFSET_Y, BREAST_OFFSET_Z + BREAST_LOWER_OFFSET_Z), skinColor)
+		weldPart(lower, upperTorso)
+	end
+	addBreast(-1)
+	addBreast(1)
+
+	local function addNipple(side)
+		local xOff = side * NIPPLE_OFFSET_X
+		local nipple = createBodyPart(npc, "Nipple_" .. (side == -1 and "L" or "R"), NIPPLE_SIZE,
+			upperTorso.CFrame * CFrame.new(xOff, BREAST_OFFSET_Y + NIPPLE_OFFSET_Y, BREAST_OFFSET_Z + NIPPLE_OFFSET_Z), NIPPLE_COLOR)
+		weldPart(nipple, upperTorso)
+	end
+	addNipple(-1)
+	addNipple(1)
+
+	local function addButt(side)
+		local xOff = side * BUTT_OFFSET_X
+		local main = createBodyPart(npc, "ButtMain_" .. (side == -1 and "L" or "R"), BUTT_SIZE,
+			lowerTorso.CFrame * CFrame.new(xOff, BUTT_OFFSET_Y, BUTT_OFFSET_Z), skinColor)
+		weldPart(main, lowerTorso)
+		local lower = createBodyPart(npc, "ButtLower_" .. (side == -1 and "L" or "R"), BUTT_LOWER_SIZE,
+			lowerTorso.CFrame * CFrame.new(xOff, BUTT_OFFSET_Y + BUTT_LOWER_OFFSET_Y, BUTT_OFFSET_Z + BUTT_LOWER_OFFSET_Z), skinColor)
+		weldPart(lower, lowerTorso)
+	end
+	addButt(-1)
+	addButt(1)
+end
+
+--==================================================
+-- ФУНКЦИИ ДЛЯ ОБЪЯТИЙ
+--==================================================
+
+local function getPlayerParts()
+	local char = LocalPlayer.Character
+	if not char then return end
+	return {
+		Head = char:FindFirstChild("Head"),
+		UpperTorso = char:FindFirstChild("UpperTorso"),
+		LowerTorso = char:FindFirstChild("LowerTorso"),
+		LeftArm = char:FindFirstChild("LeftArm"),
+		RightArm = char:FindFirstChild("RightArm"),
+		LeftLeg = char:FindFirstChild("LeftLeg"),
+		RightLeg = char:FindFirstChild("RightLeg"),
+		HumanoidRootPart = char:FindFirstChild("HumanoidRootPart"),
+	}
+end
+
+local function getNpcParts()
+	if not spawnedNpc then return end
+	return {
+		Head = spawnedNpc:FindFirstChild("Head"),
+		UpperTorso = spawnedNpc:FindFirstChild("UpperTorso"),
+		LowerTorso = spawnedNpc:FindFirstChild("LowerTorso"),
+		LeftArm = spawnedNpc:FindFirstChild("LeftArm"),
+		RightArm = spawnedNpc:FindFirstChild("RightArm"),
+		LeftLeg = spawnedNpc:FindFirstChild("LeftLeg"),
+		RightLeg = spawnedNpc:FindFirstChild("RightLeg"),
+		HumanoidRootPart = spawnedNpc:FindFirstChild("HumanoidRootPart"),
+	}
+end
+
+local function attachNpcToPlayer()
+	local playerParts = getPlayerParts()
+	local npcParts = getNpcParts()
+	if not playerParts or not npcParts then return false end
+
+	-- Отключаем физику NPC
+	local npcHumanoid = spawnedNpc:FindFirstChildOfClass("Humanoid")
+	if npcHumanoid then
+		npcHumanoid.PlatformStand = true
+	end
+
+	-- Прикрепляем RootPart NPC к RootPart игрока с небольшим смещением (сидя на коленях)
+	local rootWeld = Instance.new("Weld")
+	rootWeld.Part0 = playerParts.HumanoidRootPart
+	rootWeld.Part1 = npcParts.HumanoidRootPart
+	rootWeld.C0 = CFrame.new(0, -1.2, 1.2) -- смещение вперёд и вниз (на колени)
+	rootWeld.C1 = CFrame.new(0, 0, 0)
+	rootWeld.Parent = npcParts.HumanoidRootPart
+	table.insert(npcWelds, rootWeld)
+
+	-- Прикрепляем руки NPC к рукам игрока (объятие)
+	local armWeldL = Instance.new("Weld")
+	armWeldL.Part0 = playerParts.LeftArm
+	armWeldL.Part1 = npcParts.LeftArm
+	armWeldL.C0 = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi/2, 0) -- повернуть руку
+	armWeldL.C1 = CFrame.new(0, 0, 0)
+	armWeldL.Parent = npcParts.LeftArm
+	table.insert(npcWelds, armWeldL)
+
+	local armWeldR = Instance.new("Weld")
+	armWeldR.Part0 = playerParts.RightArm
+	armWeldR.Part1 = npcParts.RightArm
+	armWeldR.C0 = CFrame.new(0, 0, 0) * CFrame.Angles(0, -math.pi/2, 0)
+	armWeldR.C1 = CFrame.new(0, 0, 0)
+	armWeldR.Parent = npcParts.RightArm
+	table.insert(npcWelds, armWeldR)
+
+	-- Прикрепляем ноги NPC к ногам игрока (обхват)
+	local legWeldL = Instance.new("Weld")
+	legWeldL.Part0 = playerParts.LeftLeg
+	legWeldL.Part1 = npcParts.LeftLeg
+	legWeldL.C0 = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi/3, 0)
+	legWeldL.C1 = CFrame.new(0, 0, 0)
+	legWeldL.Parent = npcParts.LeftLeg
+	table.insert(npcWelds, legWeldL)
+
+	local legWeldR = Instance.new("Weld")
+	legWeldR.Part0 = playerParts.RightLeg
+	legWeldR.Part1 = npcParts.RightLeg
+	legWeldR.C0 = CFrame.new(0, 0, 0) * CFrame.Angles(0, -math.pi/3, 0)
+	legWeldR.C1 = CFrame.new(0, 0, 0)
+	legWeldR.Parent = npcParts.RightLeg
+	table.insert(npcWelds, legWeldR)
+
+	-- Дополнительно повернём голову NPC к игроку (необязательно)
+	local headWeld = Instance.new("Weld")
+	headWeld.Part0 = playerParts.Head
+	headWeld.Part1 = npcParts.Head
+	headWeld.C0 = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi, 0) -- лицом к игроку
+	headWeld.C1 = CFrame.new(0, 0, 0)
+	headWeld.Parent = npcParts.Head
+	table.insert(npcWelds, headWeld)
+
+	return true
+end
+
+local function detachNpcFromPlayer()
+	for _, weld in ipairs(npcWelds) do
+		weld:Destroy()
+	end
+	npcWelds = {}
+	local npcHumanoid = spawnedNpc:FindFirstChildOfClass("Humanoid")
+	if npcHumanoid then
+		npcHumanoid.PlatformStand = false
+	end
+	isHugging = false
+end
+
+--==================================================
+-- ОБРАБОТЧИК ВВОДА
+--==================================================
+
+local function onInputBegan(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.E then
+		if not spawnedNpc then return end
+		local character = LocalPlayer.Character
+		if not character then return end
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local npcRoot = spawnedNpc:FindFirstChild("HumanoidRootPart")
+		if not root or not npcRoot then return end
+
+		local distance = (root.Position - npcRoot.Position).Magnitude
+		if distance < 5 then -- радиус взаимодействия
+			if isHugging then
+				detachNpcFromPlayer()
+			else
+				local success = attachNpcToPlayer()
+				if success then
+					isHugging = true
+				end
+			end
+		end
+	end
+end
+
+UserInputService.InputBegan:Connect(onInputBegan)
+
+--==================================================
+-- СОЗДАНИЕ NPC
+--==================================================
+
+local function createNpc(position)
+	if spawnedNpc and spawnedNpc.Parent then
+		spawnedNpc:Destroy()
+		spawnedNpc = nil
+		isHugging = false
+		for _, w in ipairs(npcWelds) do w:Destroy() end
+		npcWelds = {}
+	end
+
+	local description = Instance.new("HumanoidDescription")
+	description.BodyTypeScale = 0.65
+	description.HeightScale = 0.98
+	description.WidthScale = 0.84
+	description.ProportionScale = 0.45
+	description.HeadScale = 0.95
+	description.Face = CONFIG.faceId
+	description.HairAccessory = CONFIG.hairId
+
+	local npc = Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
+	npc.Name = CONFIG.name
+	npc.Parent = workspace
+	spawnedNpc = npc
+
+	-- Удаляем стандартную одежду
+	for _, child in ipairs(npc:GetChildren()) do
+		if child:IsA("Shirt") or child:IsA("Pants") then
+			child:Destroy()
+		end
+	end
+
+	-- Добавляем купальник
+	if CONFIG.topId and CONFIG.topId ~= 0 then
+		local shirt = Instance.new("Shirt")
+		shirt.ShirtTemplate = "rbxassetid://" .. CONFIG.topId
+		shirt.Parent = npc
+	end
+	if CONFIG.bottomId and CONFIG.bottomId ~= 0 then
+		local pants = Instance.new("Pants")
+		pants.PantsTemplate = "rbxassetid://" .. CONFIG.bottomId
+		pants.Parent = npc
+	end
+
+	-- Окраска кожи
+	for _, object in ipairs(npc:GetDescendants()) do
+		if object:IsA("BasePart") and object.Name ~= "HumanoidRootPart" then
+			object.Color = CONFIG.skinColor
+		end
+	end
+
+	addCharacterShape(npc, CONFIG.skinColor)
+
+	local humanoid = npc:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayName = CONFIG.name
+		humanoid.WalkSpeed = 0
+		humanoid.JumpPower = 0
+		humanoid.AutoRotate = true
+	end
+
+	npc:PivotTo(CFrame.new(position))
+
+	-- Анимация
+	if humanoid then
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = humanoid
+		end
+		local animation = Instance.new("Animation")
+		animation.AnimationId = CONFIG.idleAnimationId
+		local success, track = pcall(function()
+			return animator:LoadAnimation(animation)
+		end)
+		if success and track then
+			track.Looped = true
+			track.Priority = Enum.AnimationPriority.Idle
+			track:Play()
+		end
+	end
+
+	return npc
+end
+
+--==================================================
+-- СПАВН
+--==================================================
+
+local function spawnNpc(status)
+	local character = LocalPlayer.Character
+	if not character then
+		status.Text = "Персонаж не найден"
+		return
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		status.Text = "Корень персонажа не найден"
+		return
+	end
+	status.Text = "Создание..."
+	local position = (root.CFrame * CFrame.new(0, 0, -6)).Position
+	local success, result = pcall(function()
+		return createNpc(position)
+	end)
+	if success and result then
+		status.Text = "Персонаж создан. Нажми E рядом для объятий."
+	else
+		status.Text = "Ошибка: " .. tostring(result)
+	end
+end
+
+--==================================================
+-- GUI
+--==================================================
+
+local oldGui = LocalPlayer.PlayerGui:FindFirstChild("NpcSpawnMenuLocal")
+if oldGui then oldGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "NpcSpawnMenuLocal"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromOffset(240, 145)
+Main.Position = UDim2.fromOffset(15, 15)
+Main.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+Main.BorderSizePixel = 0
+Main.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = Main
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundTransparency = 1
+Title.Text = "Персонаж"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.Parent = Main
+
+local SpawnButton = Instance.new("TextButton")
+SpawnButton.Size = UDim2.fromOffset(210, 48)
+SpawnButton.Position = UDim2.fromOffset(15, 43)
+SpawnButton.BackgroundColor3 = Color3.fromRGB(70, 90, 150)
+SpawnButton.BorderSizePixel = 0
+SpawnButton.Text = "Создать персонажа"
+SpawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpawnButton.Font = Enum.Font.GothamBold
+SpawnButton.TextSize = 14
+SpawnButton.Parent = Main
+
+local ButtonCorner = Instance.new("UICorner")
+ButtonCorner.CornerRadius = UDim.new(0, 9)
+ButtonCorner.Parent = SpawnButton
+
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.fromOffset(210, 35)
+Status.Position = UDim2.fromOffset(15, 96)
+Status.BackgroundTransparency = true
+Status.Text = "Готово"
+Status.TextColor3 = Color3.fromRGB(205, 220, 255)
+Status.Font = Enum.Font.Gotham
+Status.TextSize = 12
+Status.TextWrapped = true
+Status.Parent = Main
+
+SpawnButton.MouseButton1Click:Connect(function()
+	spawnNpc(Status)
+end)
+
+print("[NPC] Персонаж Лера загружен. Нажми E для объятий.")
