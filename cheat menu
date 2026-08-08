@@ -1,0 +1,371 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+local savedPoints = {}
+
+local function isMyModeActive()
+	local modeValue = workspace:FindFirstChild("CurrentGameMode")
+	return modeValue and modeValue.Value == "MyCheatMode"
+end
+
+local function makeDraggable(dragHandle, target)
+	local dragging = false
+	local dragStart
+	local startPos
+
+	dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = target.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	dragHandle.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+local function styleButton(btn, accentColor)
+	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+	btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+	btn.Font = Enum.Font.GothamMedium
+	btn.TextSize = 14
+	btn.AutoButtonColor = false
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = btn
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = accentColor
+	stroke.Thickness = 1
+	stroke.Transparency = 0.5
+	stroke.Parent = btn
+
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(60, 60, 75)}):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(45, 45, 55)}):Play()
+	end)
+end
+
+local accent = Color3.fromRGB(120, 90, 255)
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 170, 0, 130)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+frame.Parent = screenGui
+
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 12)
+frameCorner.Parent = frame
+
+local frameStroke = Instance.new("UIStroke")
+frameStroke.Color = accent
+frameStroke.Thickness = 1.5
+frameStroke.Transparency = 0.4
+frameStroke.Parent = frame
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 34)
+titleBar.Position = UDim2.new(0, 0, 0, 0)
+titleBar.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
+titleBar.Active = true
+titleBar.Parent = frame
+
+local titleBarCorner = Instance.new("UICorner")
+titleBarCorner.CornerRadius = UDim.new(0, 12)
+titleBarCorner.Parent = titleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -100, 1, 0)
+titleLabel.Position = UDim2.new(0, 12, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Cheat Menu"
+titleLabel.TextColor3 = Color3.fromRGB(210, 200, 255)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 14
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local body = Instance.new("Frame")
+body.Size = UDim2.new(1, 0, 1, -34)
+body.Position = UDim2.new(0, 0, 0, 34)
+body.BackgroundTransparency = 1
+body.Parent = frame
+
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 26, 0, 26)
+closeButton.Position = UDim2.new(1, -32, 0, 4)
+closeButton.Text = "X"
+closeButton.Parent = titleBar
+styleButton(closeButton, Color3.fromRGB(255, 90, 90))
+
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Size = UDim2.new(0, 26, 0, 26)
+minimizeButton.Position = UDim2.new(1, -62, 0, 4)
+minimizeButton.Text = "-"
+minimizeButton.Parent = titleBar
+styleButton(minimizeButton, accent)
+
+local maximizeButton = Instance.new("TextButton")
+maximizeButton.Size = UDim2.new(0, 26, 0, 26)
+maximizeButton.Position = UDim2.new(1, -92, 0, 4)
+maximizeButton.Text = "[]"
+maximizeButton.Parent = titleBar
+styleButton(maximizeButton, accent)
+
+makeDraggable(titleBar, frame)
+
+local originalSize = frame.Size
+local minimizedSize = UDim2.new(0, 170, 0, 34)
+local maximizedSize = UDim2.new(0, 320, 0, 250)
+local isMinimized = false
+local isMaximized = false
+
+closeButton.MouseButton1Click:Connect(function()
+	screenGui.Enabled = false
+end)
+
+minimizeButton.MouseButton1Click:Connect(function()
+	isMinimized = not isMinimized
+	body.Visible = not isMinimized
+	if isMinimized then
+		frame.Size = minimizedSize
+	else
+		frame.Size = isMaximized and maximizedSize or originalSize
+	end
+end)
+
+maximizeButton.MouseButton1Click:Connect(function()
+	isMaximized = not isMaximized
+	isMinimized = false
+	body.Visible = true
+	frame.Size = isMaximized and maximizedSize or originalSize
+end)
+
+local tpButton = Instance.new("TextButton")
+tpButton.Size = UDim2.new(1, -20, 0, 34)
+tpButton.Position = UDim2.new(0, 10, 0, 12)
+tpButton.Text = "TP"
+tpButton.Parent = body
+styleButton(tpButton, accent)
+
+local deleteButton = Instance.new("TextButton")
+deleteButton.Size = UDim2.new(1, -20, 0, 34)
+deleteButton.Position = UDim2.new(0, 10, 0, 54)
+deleteButton.Text = "Delete"
+deleteButton.Parent = body
+styleButton(deleteButton, Color3.fromRGB(255, 90, 90))
+
+local tpMenu = Instance.new("Frame")
+tpMenu.Size = UDim2.new(0, 170, 0, 220)
+tpMenu.Position = UDim2.new(0, 210, 0, 20)
+tpMenu.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+tpMenu.Visible = false
+tpMenu.Parent = screenGui
+
+local tpMenuCorner = Instance.new("UICorner")
+tpMenuCorner.CornerRadius = UDim.new(0, 12)
+tpMenuCorner.Parent = tpMenu
+
+local tpMenuStroke = Instance.new("UIStroke")
+tpMenuStroke.Color = accent
+tpMenuStroke.Thickness = 1.5
+tpMenuStroke.Transparency = 0.4
+tpMenuStroke.Parent = tpMenu
+
+local tpMenuTitle = Instance.new("Frame")
+tpMenuTitle.Size = UDim2.new(1, 0, 0, 34)
+tpMenuTitle.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
+tpMenuTitle.Active = true
+tpMenuTitle.Parent = tpMenu
+
+local tpMenuTitleCorner = Instance.new("UICorner")
+tpMenuTitleCorner.CornerRadius = UDim.new(0, 12)
+tpMenuTitleCorner.Parent = tpMenuTitle
+
+local tpMenuTitleLabel = Instance.new("TextLabel")
+tpMenuTitleLabel.Size = UDim2.new(1, -40, 1, 0)
+tpMenuTitleLabel.Position = UDim2.new(0, 12, 0, 0)
+tpMenuTitleLabel.BackgroundTransparency = 1
+tpMenuTitleLabel.Text = "Teleport Points"
+tpMenuTitleLabel.TextColor3 = Color3.fromRGB(210, 200, 255)
+tpMenuTitleLabel.Font = Enum.Font.GothamBold
+tpMenuTitleLabel.TextSize = 14
+tpMenuTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+tpMenuTitleLabel.Parent = tpMenuTitle
+
+local tpMenuClose = Instance.new("TextButton")
+tpMenuClose.Size = UDim2.new(0, 26, 0, 26)
+tpMenuClose.Position = UDim2.new(1, -32, 0, 4)
+tpMenuClose.Text = "X"
+tpMenuClose.Parent = tpMenuTitle
+styleButton(tpMenuClose, Color3.fromRGB(255, 90, 90))
+
+local tpMenuMinimize = Instance.new("TextButton")
+tpMenuMinimize.Size = UDim2.new(0, 26, 0, 26)
+tpMenuMinimize.Position = UDim2.new(1, -62, 0, 4)
+tpMenuMinimize.Text = "-"
+tpMenuMinimize.Parent = tpMenuTitle
+styleButton(tpMenuMinimize, accent)
+
+makeDraggable(tpMenuTitle, tpMenu)
+
+local tpBody = Instance.new("Frame")
+tpBody.Size = UDim2.new(1, 0, 1, -34)
+tpBody.Position = UDim2.new(0, 0, 0, 34)
+tpBody.BackgroundTransparency = 1
+tpBody.Parent = tpMenu
+
+local tpMenuOriginalSize = tpMenu.Size
+local tpMenuMinimizedSize = UDim2.new(0, 170, 0, 34)
+local isTpMenuMinimized = false
+
+tpMenuMinimize.MouseButton1Click:Connect(function()
+	isTpMenuMinimized = not isTpMenuMinimized
+	tpBody.Visible = not isTpMenuMinimized
+	tpMenu.Size = isTpMenuMinimized and tpMenuMinimizedSize or tpMenuOriginalSize
+end)
+
+local saveButton = Instance.new("TextButton")
+saveButton.Size = UDim2.new(1, -20, 0, 32)
+saveButton.Position = UDim2.new(0, 10, 0, 10)
+saveButton.Text = "Save Current"
+saveButton.Parent = tpBody
+styleButton(saveButton, accent)
+
+local pointsList = Instance.new("ScrollingFrame")
+pointsList.Size = UDim2.new(1, -20, 1, -56)
+pointsList.Position = UDim2.new(0, 10, 0, 48)
+pointsList.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+pointsList.CanvasSize = UDim2.new(0, 0, 0, 0)
+pointsList.ScrollBarThickness = 4
+pointsList.ScrollBarImageColor3 = accent
+pointsList.Parent = tpBody
+
+local pointsListCorner = Instance.new("UICorner")
+pointsListCorner.CornerRadius = UDim.new(0, 8)
+pointsListCorner.Parent = pointsList
+
+local pointsLayout = Instance.new("UIListLayout")
+pointsLayout.Padding = UDim.new(0, 6)
+pointsLayout.Parent = pointsList
+
+local pointsPadding = Instance.new("UIPadding")
+pointsPadding.PaddingTop = UDim.new(0, 6)
+pointsPadding.PaddingLeft = UDim.new(0, 6)
+pointsPadding.PaddingRight = UDim.new(0, 6)
+pointsPadding.Parent = pointsList
+
+local function refreshPointsList()
+	for _, child in pairs(pointsList:GetChildren()) do
+		if child:IsA("TextButton") then
+			child:Destroy()
+		end
+	end
+
+	for i, point in ipairs(savedPoints) do
+		local pointButton = Instance.new("TextButton")
+		pointButton.Size = UDim2.new(1, -12, 0, 30)
+		pointButton.Text = "Point " .. i
+		pointButton.Parent = pointsList
+		styleButton(pointButton, accent)
+
+		pointButton.MouseButton1Click:Connect(function()
+			local character = player.Character
+			local hrp = character and character:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				hrp.CFrame = CFrame.new(point.x, point.y, point.z)
+			end
+		end)
+	end
+
+	pointsList.CanvasSize = UDim2.new(0, 0, 0, #savedPoints * 36)
+end
+
+saveButton.MouseButton1Click:Connect(function()
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		table.insert(savedPoints, {x = hrp.Position.X, y = hrp.Position.Y, z = hrp.Position.Z})
+		refreshPointsList()
+	end
+end)
+
+tpMenuClose.MouseButton1Click:Connect(function()
+	tpMenu.Visible = false
+end)
+
+local function giveTool(name)
+	local backpack = player:WaitForChild("Backpack")
+	for _, t in pairs(backpack:GetChildren()) do
+		if t.Name == name then t:Destroy() end
+	end
+	local character = player.Character
+	if character then
+		for _, t in pairs(character:GetChildren()) do
+			if t:IsA("Tool") and t.Name == name then t:Destroy() end
+		end
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name = name
+	tool.RequiresHandle = false
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(1, 1, 1)
+	handle.Transparency = 1
+	handle.CanCollide = false
+	handle.Parent = tool
+
+	tool.Equipped:Connect(function(mouse)
+		if name == "TP" then
+			tpMenu.Visible = true
+		end
+		mouse.Button1Down:Connect(function()
+			local target = mouse.Target
+			local hitPos = mouse.Hit and mouse.Hit.Position
+
+			if name == "TP" then
+				local hrp = character and character:FindFirstChild("HumanoidRootPart")
+				if hrp and hitPos then
+					hrp.CFrame = CFrame.new(hitPos + Vector3.new(0, 3, 0))
+				end
+			elseif name == "Delete" then
+				if target then
+					target:Destroy()
+				end
+			end
+		end)
+	end)
+
+	tool.Parent = backpack
+end
+
+tpButton.MouseButton1Click:Connect(function()
+	giveTool("TP")
+end)
+
+deleteButton.MouseButton1Click:Connect(function()
+	giveTool("Delete")
+end)
