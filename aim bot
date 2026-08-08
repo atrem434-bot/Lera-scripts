@@ -1,0 +1,473 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Teams = game:GetService("Teams")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local selectedTeams = {}
+local MAX_NPC = 30
+local npcCount = 0
+local activeSlots = {}
+local started = false
+local pendingAssignment = {}
+local aimEnabled = false
+local aimPower = 0.95
+local maxDistance = 120
+
+local oldFolder = workspace:FindFirstChild("LocalNPCs")
+if oldFolder then oldFolder:Destroy() end
+
+local npcFolder = Instance.new("Folder")
+npcFolder.Name = "LocalNPCs"
+npcFolder.Parent = workspace
+
+local highlightFolder = Instance.new("Folder")
+highlightFolder.Name = "AimHighlights"
+highlightFolder.Parent = npcFolder
+
+local highlights = {}
+local PARK_POSITION = Vector3.new(0, 100000, 0)
+
+local function isPlayerAllowed(plr)
+    if not plr then return false end
+    if next(selectedTeams) == nil then return true end
+    return plr.Team ~= nil and selectedTeams[plr.Team] == true
+end
+
+local function createHeadNPC(index)
+    local npc = Instance.new("Model")
+    npc.Name = tostring(index) .. "v"
+
+    local humanoid = Instance.new("Humanoid")
+    humanoid.Name = "Humanoid"
+    humanoid.MaxHealth = 100
+    humanoid.Health = 100
+    humanoid.Parent = npc
+
+    local head = Instance.new("Part")
+    head.Name = "Head"
+    head.Shape = Enum.PartType.Ball
+    head.Size = Vector3.new(1, 1, 1)
+    head.Anchored = true
+    head.CanCollide = false
+    head.CanQuery = false
+    head.BrickColor = BrickColor.new("Bright yellow")
+    head.Transparency = 1
+    head.Position = PARK_POSITION
+
+    local nameTag = Instance.new("BillboardGui")
+    nameTag.Size = UDim2.new(0, 60, 0, 20)
+    nameTag.StudsOffset = Vector3.new(0, 1, 0)
+    nameTag.Adornee = head
+    nameTag.Enabled = false
+    nameTag.Parent = head
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = npc.Name
+    nameLabel.TextScaled = true
+    nameLabel.TextColor3 = Color3.new(1, 1, 1)
+    nameLabel.Visible = false
+    nameLabel.Parent = nameTag
+
+    head.Parent = npc
+    npc.PrimaryPart = head
+    npc.Parent = npcFolder
+
+    return npc, head
+end
+
+local function hideSlot(slot)
+    slot.head.Transparency = 1
+    local nameTag = slot.head:FindFirstChildOfClass("BillboardGui")
+    if nameTag then nameTag.Enabled = false end
+    slot.assignedCharacter = nil
+    slot.occupied = false
+end
+
+local function showSlot(slot)
+    slot.head.Transparency = 0
+    local nameTag = slot.head:FindFirstChildOfClass("BillboardGui")
+    if nameTag then nameTag.Enabled = true end
+end
+
+local function findFreeSlot()
+    for _, slot in ipairs(activeSlots) do
+        if not slot.occupied then return slot end
+    end
+    return nil
+end
+
+local function isCharacterAssigned(character)
+    for _, slot in ipairs(activeSlots) do
+        if slot.occupied and slot.assignedCharacter == character then return true end
+    end
+    return false
+end
+
+local function assignToCharacter(character)
+    if isCharacterAssigned(character) or pendingAssignment[character] then return end
+    pendingAssignment[character] = true
+
+    local rootPart = character:FindFirstChild("Head")
+    if not rootPart then
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then rootPart = hrp end
+    end
+    if not rootPart then
+        rootPart = character:WaitForChild("Head", 5) or character:WaitForChild("HumanoidRootPart", 2)
+    end
+    if not rootPart then pendingAssignment[character] = nil return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then pendingAssignment[character] = nil return end
+
+    if isCharacterAssigned(character) then pendingAssignment[character] = nil return end
+
+    local slot = findFreeSlot()
+    if not slot then
+        if npcCount >= MAX_NPC then pendingAssignment[character] = nil return end
+        npcCount += 1
+        local model, head = createHeadNPC(npcCount)
+        slot = { model = model, head = head, occupied = false, assignedCharacter = nil }
+        table.insert(activeSlots, slot)
+    end
+
+    slot.occupied = true
+    slot.assignedCharacter = character
+    slot.lastUpdate = os.clock()
+    showSlot(slot)
+    pendingAssignment[character] = nil
+end
+
+local function onCharacterAdded(character)
+    local plr = Players:GetPlayerFromCharacter(character)
+    if plr == player then return end
+
+    task.spawn(function()
+        local humanoid = character:WaitForChild("Humanoid", 10)
+        if not humanoid then return end
+
+        humanoid.Died:Connect(function()
+            for _, slot in ipairs(activeSlots) do
+                if slot.assignedCharacter == character then hideSlot(slot) end
+            end
+            pendingAssignment[character] = nil
+        end)
+
+        if isPlayerAllowed(plr) then assignToCharacter(character) end
+    end)
+end
+
+local function startSystem()
+    if started then return end
+    started = true
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player then
+            task.spawn(function() if plr.Character then onCharacterAdded(plr.Character) end end)
+            plr.CharacterAdded:Connect(onCharacterAdded)
+        end
+    end
+
+    Players.PlayerAdded:Connect(function(plr)
+        if plr ~= player then plr.CharacterAdded:Connect(onCharacterAdded) end
+    end)
+
+    RunService.RenderStepped:Connect(function()
+        for _, slot in ipairs(activeSlots) do
+            if slot.occupied and slot.assignedCharacter then
+                local character = slot.assignedCharacter
+                local plr = Players:GetPlayerFromCharacter(character)
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+                if character.Parent == nil or not plr or plr.Parent == nil or not humanoid or humanoid.Health <= 0 then
+                    hideSlot(slot)
+                else
+                    local head = character:FindFirstChild("Head")
+                    if head then
+                        slot.head.Position = head.Position
+                        slot.lastUpdate = os.clock()
+                    else
+                        local hrp = character:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            slot.head.Position = hrp.Position + Vector3.new(0, 2.5, 0)
+                            slot.lastUpdate = os.clock()
+                        else
+                            hideSlot(slot)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    task.spawn(function()
+        while started do
+            task.wait(1)
+            for _, slot in ipairs(activeSlots) do
+                if slot.occupied then
+                    if (os.clock() - (slot.lastUpdate or 0)) > 3 then
+                        hideSlot(slot)
+                    else
+                        local plr = slot.assignedCharacter and Players:GetPlayerFromCharacter(slot.assignedCharacter)
+                        if not isPlayerAllowed(plr) then hideSlot(slot) end
+                    end
+                end
+            end
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= player and plr.Character and isPlayerAllowed(plr) then
+                    local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+                    if humanoid and humanoid.Health > 0 and not isCharacterAssigned(plr.Character) then
+                        task.spawn(function() assignToCharacter(plr.Character) end)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function createHighlight(npc)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "AimHighlight"
+    highlight.FillColor = Color3.fromRGB(0, 200, 255)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.55
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = false
+    highlight.Adornee = npc
+    highlight.Parent = highlightFolder
+    return highlight
+end
+
+local function updateHighlights()
+    for i = 1, MAX_NPC do
+        local npc = npcFolder:FindFirstChild(i .. "v")
+        if npc then
+            local head = npc:FindFirstChild("Head")
+            if head and head:IsA("BasePart") then
+                if not highlights[npc] then highlights[npc] = createHighlight(npc) end
+                local distance = (camera.CFrame.Position - head.Position).Magnitude
+                highlights[npc].Enabled = aimEnabled and distance <= maxDistance
+            end
+        end
+    end
+    for npc, h in pairs(highlights) do
+        if not npc.Parent then h:Destroy(); highlights[npc] = nil end
+    end
+end
+
+local function getTarget()
+    local target = nil
+    local closest = maxDistance
+    for _, slot in ipairs(activeSlots) do
+        if slot.occupied and slot.head and slot.head.Transparency == 0 then
+            local dist = (camera.CFrame.Position - slot.head.Position).Magnitude
+            if dist <= maxDistance and dist < closest then
+                closest = dist
+                target = slot.head
+            end
+        end
+    end
+    return target
+end
+
+RunService:BindToRenderStep("NPC_AIM_SYSTEM", Enum.RenderPriority.Camera.Value + 1, function()
+    updateHighlights()
+    if not aimEnabled then return end
+    local target = getTarget()
+    if target then
+        camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(camera.CFrame.Position, target.Position), aimPower)
+    end
+end)
+
+-- GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "NPCMenu"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 220, 0, 300)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local dragToggle = false
+local dragInput = nil
+local dragStart = nil
+local startPos = nil
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragToggle = true
+        dragStart = input.Position
+        startPos = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragToggle = false
+            end
+        end)
+    end
+end)
+
+frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragToggle then
+        updateDrag(input)
+    end
+end)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "AI'M BOT"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.Parent = frame
+
+local counterLabel = Instance.new("TextLabel")
+counterLabel.Size = UDim2.new(1, 0, 0, 20)
+counterLabel.Position = UDim2.new(0, 0, 0, 30)
+counterLabel.BackgroundTransparency = 1
+counterLabel.Text = "Players: 0 / " .. MAX_NPC
+counterLabel.TextColor3 = Color3.new(1, 1, 1)
+counterLabel.TextScaled = true
+counterLabel.Parent = frame
+
+local startButton = Instance.new("TextButton")
+startButton.Size = UDim2.new(1, -20, 0, 30)
+startButton.Position = UDim2.new(0, 10, 0, 55)
+startButton.Text = "Start"
+startButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+startButton.TextColor3 = Color3.new(1, 1, 1)
+startButton.Font = Enum.Font.GothamBold
+startButton.Parent = frame
+
+startButton.MouseButton1Click:Connect(function()
+    startSystem()
+    startButton.Text = "Запущено"
+    startButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+    startButton.AutoButtonColor = false
+end)
+
+local aimButton = Instance.new("TextButton")
+aimButton.Size = UDim2.new(1, -20, 0, 30)
+aimButton.Position = UDim2.new(0, 10, 0, 90)
+aimButton.Text = "Aim: OFF"
+aimButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+aimButton.TextColor3 = Color3.new(1, 1, 1)
+aimButton.Font = Enum.Font.Gotham
+aimButton.Parent = frame
+
+local function updateAimButton()
+    if aimEnabled then
+        aimButton.Text = "Aim: ON"
+        aimButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    else
+        aimButton.Text = "Aim: OFF"
+        aimButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    end
+end
+
+aimButton.MouseButton1Click:Connect(function()
+    aimEnabled = not aimEnabled
+    updateAimButton()
+end)
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.V then
+        aimEnabled = not aimEnabled
+        updateAimButton()
+    end
+end)
+
+local teamsLabel = Instance.new("TextLabel")
+teamsLabel.Size = UDim2.new(1, -20, 0, 16)
+teamsLabel.Position = UDim2.new(0, 10, 0, 125)
+teamsLabel.BackgroundTransparency = 1
+teamsLabel.Text = "Команды (пусто = все):"
+teamsLabel.TextColor3 = Color3.new(1, 1, 1)
+teamsLabel.TextScaled = true
+teamsLabel.Parent = frame
+
+local teamsScroll = Instance.new("ScrollingFrame")
+teamsScroll.Size = UDim2.new(1, -20, 0, 140)
+teamsScroll.Position = UDim2.new(0, 10, 0, 145)
+teamsScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+teamsScroll.BorderSizePixel = 0
+teamsScroll.ScrollBarThickness = 6
+teamsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+teamsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+teamsScroll.Parent = frame
+
+local teamsListLayout = Instance.new("UIListLayout")
+teamsListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+teamsListLayout.Padding = UDim.new(0, 2)
+teamsListLayout.Parent = teamsScroll
+
+local function updateTeamButtonVisual(team, btn)
+    if selectedTeams[team] then
+        btn.BackgroundColor3 = Color3.fromRGB(60, 150, 60)
+    else
+        btn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+    end
+end
+
+local function rebuildTeamButtons()
+    for _, child in ipairs(teamsScroll:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+
+    local list = Teams:GetTeams()
+    table.sort(list, function(a, b) return a.Name < b.Name end)
+
+    for i, team in ipairs(list) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 24)
+        btn.LayoutOrder = i
+        btn.Text = team.Name
+        btn.TextColor3 = Color3.new(1, 1, 1)
+        btn.Parent = teamsScroll
+        updateTeamButtonVisual(team, btn)
+
+        btn.MouseButton1Click:Connect(function()
+            if selectedTeams[team] then
+                selectedTeams[team] = nil
+            else
+                selectedTeams[team] = true
+            end
+            updateTeamButtonVisual(team, btn)
+        end)
+    end
+end
+
+Teams.ChildAdded:Connect(rebuildTeamButtons)
+Teams.ChildRemoved:Connect(function(team)
+    selectedTeams[team] = nil
+    rebuildTeamButtons()
+end)
+
+rebuildTeamButtons()
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        counterLabel.Text = "Players: " .. npcCount .. " / " .. MAX_NPC
+    end
+end)
