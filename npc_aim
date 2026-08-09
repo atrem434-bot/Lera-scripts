@@ -1,0 +1,380 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local MAX_TRACK = 9000
+local aimEnabled = false
+local aimPower = 0.95
+local maxDistance = 120
+
+local highlightFolder = Instance.new("Folder")
+highlightFolder.Name = "NPCAimHighlights"
+highlightFolder.Parent = workspace
+
+local highlights = {}
+local trackedNPCs = {} -- [model] = { head = Part, humanoid = Humanoid }
+
+local accent = Color3.fromRGB(120, 90, 255)
+local redAccent = Color3.fromRGB(255, 90, 90)
+local greenAccent = Color3.fromRGB(80, 220, 100)
+
+local function styleButton(btn, btnAccent)
+	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+	btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+	btn.Font = Enum.Font.GothamMedium
+	btn.TextSize = 14
+	btn.AutoButtonColor = false
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = btn
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = btnAccent or accent
+	stroke.Thickness = 1
+	stroke.Transparency = 0.5
+	stroke.Parent = btn
+
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(60, 60, 75)}):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(45, 45, 55)}):Play()
+	end)
+end
+
+local function makeDraggable(dragHandle, target)
+	local dragging = false
+	local dragStart
+	local startPos
+
+	dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = target.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	dragHandle.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+-- ===================== UI =====================
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "NPCAimBotUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 260, 0, 220)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+frame.Parent = screenGui
+
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 12)
+frameCorner.Parent = frame
+
+local frameStroke = Instance.new("UIStroke")
+frameStroke.Color = accent
+frameStroke.Thickness = 1.5
+frameStroke.Transparency = 0.4
+frameStroke.Parent = frame
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 34)
+titleBar.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
+titleBar.Active = true
+titleBar.Parent = frame
+
+local titleBarCorner = Instance.new("UICorner")
+titleBarCorner.CornerRadius = UDim.new(0, 12)
+titleBarCorner.Parent = titleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -100, 1, 0)
+titleLabel.Position = UDim2.new(0, 12, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "NPC AIM ASSIST"
+titleLabel.TextColor3 = Color3.fromRGB(210, 200, 255)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 14
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 26, 0, 26)
+closeButton.Position = UDim2.new(1, -32, 0, 4)
+closeButton.Text = "X"
+closeButton.Parent = titleBar
+styleButton(closeButton, redAccent)
+
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Size = UDim2.new(0, 26, 0, 26)
+minimizeButton.Position = UDim2.new(1, -62, 0, 4)
+minimizeButton.Text = "-"
+minimizeButton.Parent = titleBar
+styleButton(minimizeButton, accent)
+
+makeDraggable(titleBar, frame)
+
+local body = Instance.new("Frame")
+body.Size = UDim2.new(1, 0, 1, -34)
+body.Position = UDim2.new(0, 0, 0, 34)
+body.BackgroundTransparency = 1
+body.Parent = frame
+
+local originalSize = frame.Size
+local minimizedSize = UDim2.new(0, 260, 0, 34)
+local isMinimized = false
+
+minimizeButton.MouseButton1Click:Connect(function()
+	isMinimized = not isMinimized
+	body.Visible = not isMinimized
+	frame.Size = isMinimized and minimizedSize or originalSize
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+	screenGui.Enabled = false
+end)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -20, 1, -20)
+content.Position = UDim2.new(0, 10, 0, 10)
+content.BackgroundTransparency = 1
+content.Parent = body
+
+local counterLabel = Instance.new("TextLabel")
+counterLabel.Size = UDim2.new(1, 0, 0, 22)
+counterLabel.BackgroundTransparency = 1
+counterLabel.Text = "NPCs found: 0"
+counterLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+counterLabel.Font = Enum.Font.GothamMedium
+counterLabel.TextSize = 13
+counterLabel.TextXAlignment = Enum.TextXAlignment.Left
+counterLabel.Parent = content
+
+local aimButton = Instance.new("TextButton")
+aimButton.Size = UDim2.new(1, 0, 0, 34)
+aimButton.Position = UDim2.new(0, 0, 0, 30)
+aimButton.Text = "🎯 AIM: OFF"
+aimButton.Parent = content
+styleButton(aimButton, accent)
+
+local function updateAimButton()
+	if aimEnabled then
+		aimButton.Text = "🎯 AIM: ON"
+		aimButton.BackgroundColor3 = Color3.fromRGB(0, 120, 50)
+		local stroke = aimButton:FindFirstChildOfClass("UIStroke")
+		if stroke then stroke.Color = greenAccent end
+	else
+		aimButton.Text = "🎯 AIM: OFF"
+		aimButton.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+		local stroke = aimButton:FindFirstChildOfClass("UIStroke")
+		if stroke then stroke.Color = accent end
+	end
+end
+
+aimButton.MouseButton1Click:Connect(function()
+	aimEnabled = not aimEnabled
+	updateAimButton()
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.V then
+		aimEnabled = not aimEnabled
+		updateAimButton()
+	end
+end)
+
+local rangeLabel = Instance.new("TextLabel")
+rangeLabel.Size = UDim2.new(1, 0, 0, 16)
+rangeLabel.Position = UDim2.new(0, 0, 0, 72)
+rangeLabel.BackgroundTransparency = 1
+rangeLabel.Text = "Range: " .. maxDistance .. " studs"
+rangeLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+rangeLabel.Font = Enum.Font.GothamMedium
+rangeLabel.TextSize = 12
+rangeLabel.TextXAlignment = Enum.TextXAlignment.Left
+rangeLabel.Parent = content
+
+local minusButton = Instance.new("TextButton")
+minusButton.Size = UDim2.new(0, 40, 0, 26)
+minusButton.Position = UDim2.new(0, 0, 0, 92)
+minusButton.Text = "-10"
+minusButton.Parent = content
+styleButton(minusButton, redAccent)
+
+local plusButton = Instance.new("TextButton")
+plusButton.Size = UDim2.new(0, 40, 0, 26)
+plusButton.Position = UDim2.new(0, 46, 0, 92)
+plusButton.Text = "+10"
+plusButton.Parent = content
+styleButton(plusButton, greenAccent)
+
+minusButton.MouseButton1Click:Connect(function()
+	maxDistance = math.max(10, maxDistance - 10)
+	rangeLabel.Text = "Range: " .. maxDistance .. " studs"
+end)
+plusButton.MouseButton1Click:Connect(function()
+	maxDistance = math.min(500, maxDistance + 10)
+	rangeLabel.Text = "Range: " .. maxDistance .. " studs"
+end)
+
+local creatorLabel = Instance.new("TextLabel")
+creatorLabel.Size = UDim2.new(1, 0, 0, 18)
+creatorLabel.Position = UDim2.new(0, 0, 1, -18)
+creatorLabel.BackgroundTransparency = 1
+creatorLabel.Text = "creator @RIP_TOPPOP"
+creatorLabel.TextColor3 = Color3.fromRGB(100, 100, 140)
+creatorLabel.Font = Enum.Font.Gotham
+creatorLabel.TextSize = 10
+creatorLabel.TextXAlignment = Enum.TextXAlignment.Center
+creatorLabel.Parent = content
+
+-- ===================== NPC SCANNING =====================
+-- Ищет любые модели с Humanoid + Head/HumanoidRootPart в workspace,
+-- исключая персонажей реальных игроков (Players:GetPlayerFromCharacter)
+
+local function isPlayerCharacter(model)
+	return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function getTargetPart(model)
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then return head end
+	local hrp = model:FindFirstChild("HumanoidRootPart")
+	if hrp and hrp:IsA("BasePart") then return hrp end
+	return nil
+end
+
+local function tryRegisterModel(model)
+	if trackedNPCs[model] then return end
+	if not model:IsA("Model") then return end
+	if isPlayerCharacter(model) then return end
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	local part = getTargetPart(model)
+	if not part then return end
+
+	trackedNPCs[model] = { head = part, humanoid = humanoid }
+
+	humanoid.Died:Connect(function()
+		trackedNPCs[model] = nil
+		local h = highlights[model]
+		if h then h:Destroy(); highlights[model] = nil end
+	end)
+
+	model.AncestryChanged:Connect(function(_, parent)
+		if parent == nil then
+			trackedNPCs[model] = nil
+			local h = highlights[model]
+			if h then h:Destroy(); highlights[model] = nil end
+		end
+	end)
+end
+
+local function scanWorkspace()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and #trackedNPCs < MAX_TRACK == false then
+			-- no hard cap check needed here, handled by count below
+		end
+	end
+	local count = 0
+	for _ in pairs(trackedNPCs) do count += 1 end
+
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if count >= MAX_TRACK then break end
+		if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and not trackedNPCs[obj] and not isPlayerCharacter(obj) then
+			tryRegisterModel(obj)
+			count += 1
+		end
+	end
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+	if obj:IsA("Model") then
+		task.wait(0.1) -- дать Humanoid/Head успеть заспавниться
+		tryRegisterModel(obj)
+	end
+end)
+
+-- ===================== HIGHLIGHT + AIM =====================
+
+local function createHighlight(model)
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "NPCHighlight"
+	highlight.FillColor = Color3.fromRGB(0, 200, 255)
+	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.FillTransparency = 0.55
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Adornee = model
+	highlight.Parent = highlightFolder
+	return highlight
+end
+
+local function updateHighlights()
+	for model, data in pairs(trackedNPCs) do
+		if model.Parent and data.head then
+			if not highlights[model] then highlights[model] = createHighlight(model) end
+			local distance = (camera.CFrame.Position - data.head.Position).Magnitude
+			highlights[model].Enabled = aimEnabled and distance <= maxDistance and data.humanoid.Health > 0
+		end
+	end
+	for model, h in pairs(highlights) do
+		if not trackedNPCs[model] then h:Destroy(); highlights[model] = nil end
+	end
+end
+
+local function getTarget()
+	local target = nil
+	local closest = maxDistance
+	for model, data in pairs(trackedNPCs) do
+		if model.Parent and data.head and data.humanoid.Health > 0 then
+			local dist = (camera.CFrame.Position - data.head.Position).Magnitude
+			if dist <= closest then
+				closest = dist
+				target = data.head
+			end
+		end
+	end
+	return target
+end
+
+RunService:BindToRenderStep("NPC_AIM_SYSTEM", Enum.RenderPriority.Camera.Value + 1, function()
+	updateHighlights()
+	if not aimEnabled then return end
+	local target = getTarget()
+	if target then
+		camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(camera.CFrame.Position, target.Position), aimPower)
+	end
+end)
+
+task.spawn(function()
+	scanWorkspace()
+	while true do
+		task.wait(1)
+		local count = 0
+		for _ in pairs(trackedNPCs) do count += 1 end
+		counterLabel.Text = "NPCs found: " .. count
+	end
+end)
