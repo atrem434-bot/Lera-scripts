@@ -73,8 +73,6 @@ local function makeDraggable(dragHandle, target)
 	end)
 end
 
--- ===================== UI =====================
-
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "NPCAimBotUI"
 screenGui.ResetOnSpawn = false
@@ -248,10 +246,6 @@ creatorLabel.TextSize = 10
 creatorLabel.TextXAlignment = Enum.TextXAlignment.Center
 creatorLabel.Parent = content
 
--- ===================== NPC SCANNING =====================
--- Ищет любые модели с Humanoid + Head/HumanoidRootPart в workspace,
--- исключая персонажей реальных игроков (Players:GetPlayerFromCharacter)
-
 local function isPlayerCharacter(model)
 	return Players:GetPlayerFromCharacter(model) ~= nil
 end
@@ -316,8 +310,6 @@ workspace.DescendantAdded:Connect(function(obj)
 		tryRegisterModel(obj)
 	end
 end)
-
--- ===================== HIGHLIGHT + AIM =====================
 
 local function createHighlight(model)
 	local highlight = Instance.new("Highlight")
