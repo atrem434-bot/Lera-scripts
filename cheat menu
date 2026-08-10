@@ -815,18 +815,18 @@ styleButton(startButton, greenAccent)
 local aimBotButton = Instance.new("TextButton")
 aimBotButton.Size = UDim2.new(1, 0, 0, 36)
 aimBotButton.Position = UDim2.new(0, 0, 0, 70)
-aimBotButton.Text = "ðŸŽ¯ AIM: OFF"
+aimBotButton.Text = "system AIM: OFF"
 aimBotButton.Parent = aimBotPanel
 styleButton(aimBotButton, accent)
 
 local function updateAimBotButton()
 	if aimBotEnabled then
-		aimBotButton.Text = "ðŸŽ¯ AIM: ON"
+		aimBotButton.Text = "START AIM: ON"
 		aimBotButton.BackgroundColor3 = Color3.fromRGB(0, 120, 50)
 		local stroke = aimBotButton:FindFirstChildOfClass("UIStroke")
 		if stroke then stroke.Color = greenAccent end
 	else
-		aimBotButton.Text = "ðŸŽ¯ AIM: OFF"
+		aimBotButton.Text = "START AIM: OFF"
 		aimBotButton.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
 		local stroke = aimBotButton:FindFirstChildOfClass("UIStroke")
 		if stroke then stroke.Color = accent end
