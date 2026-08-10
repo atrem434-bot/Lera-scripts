@@ -777,7 +777,7 @@ local activeSlots = {}
 local started = false
 local pendingAssignment = {}
 local aimBotEnabled = false
-local aimBotPower = 0.95
+local aimBotPower = 1
 local aimBotMaxDistance = 120
 
 local oldFolder = workspace:FindFirstChild("LocalNPCs")
@@ -808,25 +808,25 @@ aimCounterLabel.Parent = aimBotPanel
 local startButton = Instance.new("TextButton")
 startButton.Size = UDim2.new(1, 0, 0, 36)
 startButton.Position = UDim2.new(0, 0, 0, 28)
-startButton.Text = "â–¶ START"
+startButton.Text = "START"
 startButton.Parent = aimBotPanel
 styleButton(startButton, greenAccent)
 
 local aimBotButton = Instance.new("TextButton")
 aimBotButton.Size = UDim2.new(1, 0, 0, 36)
 aimBotButton.Position = UDim2.new(0, 0, 0, 70)
-aimBotButton.Text = "system AIM: OFF"
+aimBotButton.Text = "START AIM: OFF"
 aimBotButton.Parent = aimBotPanel
 styleButton(aimBotButton, accent)
 
 local function updateAimBotButton()
 	if aimBotEnabled then
-		aimBotButton.Text = "START AIM: ON"
+		aimBotButton.Text = "AIM: ON"
 		aimBotButton.BackgroundColor3 = Color3.fromRGB(0, 120, 50)
 		local stroke = aimBotButton:FindFirstChildOfClass("UIStroke")
 		if stroke then stroke.Color = greenAccent end
 	else
-		aimBotButton.Text = "START AIM: OFF"
+		aimBotButton.Text = "AIM: OFF"
 		aimBotButton.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
 		local stroke = aimBotButton:FindFirstChildOfClass("UIStroke")
 		if stroke then stroke.Color = accent end
@@ -1081,7 +1081,7 @@ local function startSystem()
 	if started then return end
 	started = true
 
-	startButton.Text = "âœ… RUNNING"
+	startButton.Text = "RUNNING"
 	startButton.BackgroundColor3 = Color3.fromRGB(0, 100, 40)
 	local stroke = startButton:FindFirstChildOfClass("UIStroke")
 	if stroke then stroke.Color = greenAccent end
